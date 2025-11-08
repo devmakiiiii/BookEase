@@ -74,6 +74,17 @@ export default function BookingsPage() {
     }
   }
 
+  const handleMarkAsPaid = async (bookingId: string) => {
+    try {
+      const response = await fetch(`/api/bookings/${bookingId}/pay`, { method: "POST" })
+      if (!response.ok) throw new Error("Failed to mark as paid")
+      setBookings(bookings.map((b) => b.id === bookingId ? { ...b, paymentStatus: "PAID", status: "CONFIRMED" } : b))
+      toast({ title: "Success", description: "Booking marked as paid" })
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to mark as paid", variant: "destructive" })
+    }
+  }
+
   if (loading) return <div className="text-center py-12">Loading...</div>
 
   return (
@@ -143,6 +154,16 @@ export default function BookingsPage() {
                     >
                       <CheckCircle className="w-4 h-4" />
                       Approve
+                    </Button>
+                  )}
+                  {booking.paymentStatus === "UNPAID" && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleMarkAsPaid(booking.id)}
+                      className="flex items-center gap-1"
+                    >
+                      💳 Mark as Paid
                     </Button>
                   )}
                   {booking.status !== "CANCELLED" && (

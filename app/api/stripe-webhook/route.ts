@@ -10,7 +10,13 @@ export async function POST(request: NextRequest) {
   let event
 
   try {
-    event = stripe.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET!)
+    // In development, allow webhooks without signature verification for Stripe CLI
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Development mode: Processing webhook without signature verification')
+      event = JSON.parse(body)
+    } else {
+      event = stripe.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET!)
+    }
   } catch (error) {
     console.error("Webhook signature verification failed:", error)
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 })
@@ -20,29 +26,37 @@ export async function POST(request: NextRequest) {
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as any
-    const bookingId = session.metadata?.bookingId
+    const sessionId = session.id
 
-    console.log("Session metadata:", session.metadata)
-    console.log("Booking ID from metadata:", bookingId)
+    console.log("Session ID:", sessionId)
+    console.log("Payment status:", session.payment_status)
 
-    if (bookingId) {
-      try {
-        await db.booking.update({
-          where: { id: bookingId },
-          data: {
-            paymentStatus: "PAID",
-            status: "CONFIRMED",
-          },
-        })
-        console.log("Updated booking", bookingId, "to PAID and CONFIRMED")
+    try {
+      const booking = await db.booking.findFirst({
+        where: { stripeSessionId: sessionId },
+      })
 
-        // Send confirmation emails
-        await sendBookingConfirmationEmail(bookingId)
-      } catch (updateError) {
-        console.error("Failed to update booking:", updateError)
+      if (booking) {
+        if (session.payment_status === "paid") {
+          await db.booking.update({
+            where: { id: booking.id },
+            data: {
+              paymentStatus: "PAID",
+              status: "CONFIRMED",
+            },
+          })
+          console.log("Updated booking", booking.id, "to PAID and CONFIRMED")
+
+          // Send confirmation emails
+          await sendBookingConfirmationEmail(booking.id)
+        } else {
+          console.log("Payment not completed for booking", booking.id)
+        }
+      } else {
+        console.error("No booking found for session ID:", sessionId)
       }
-    } else {
-      console.error("No bookingId in session metadata")
+    } catch (updateError) {
+      console.error("Failed to update booking:", updateError)
     }
   }
 

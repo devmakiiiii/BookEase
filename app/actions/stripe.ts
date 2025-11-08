@@ -88,7 +88,7 @@ export async function startCheckoutForBooking(bookingId: string) {
   // Store the session ID with the booking
   await db.booking.update({
     where: { id: booking.id },
-    data: { stripeSessionId: session.client_secret },
+    data: { stripeSessionId: session.id },
   })
 
   return session.client_secret

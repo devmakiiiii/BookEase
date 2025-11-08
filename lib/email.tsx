@@ -1,4 +1,7 @@
 import "server-only"
+import { Resend } from 'resend'
+
+const resend = new Resend(process.env.RESEND_API_KEY)
 
 interface EmailOptions {
   to: string
@@ -7,17 +10,18 @@ interface EmailOptions {
 }
 
 export async function sendEmail(options: EmailOptions): Promise<void> {
-  // Using a simple email service - in production use Resend, SendGrid, etc.
-  // For now, we'll log the email (implement your preferred service)
-  console.log("Email would be sent:", {
-    to: options.to,
-    subject: options.subject,
-  })
-
-  // Example with Resend (uncomment if using):
-  // import { Resend } from 'resend'
-  // const resend = new Resend(process.env.RESEND_API_KEY)
-  // await resend.emails.send(options)
+  try {
+    await resend.emails.send({
+      from: 'BookEase <noreply@bookease.com>', // Replace with your verified domain
+      to: options.to,
+      subject: options.subject,
+      html: options.html,
+    })
+    console.log("Email sent successfully to:", options.to)
+  } catch (error) {
+    console.error("Failed to send email:", error)
+    throw error
+  }
 }
 
 export function getBookingConfirmationEmail(
