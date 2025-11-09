@@ -9,6 +9,9 @@ export async function createBooking(serviceId: string, startTime: string, notes:
   if (!user) {
     throw new Error("User not authenticated")
   }
+  if (user.role !== "CUSTOMER") {
+    throw new Error("Only customers can create bookings")
+  }
 
   const service = await db.service.findUnique({
     where: { id: serviceId },

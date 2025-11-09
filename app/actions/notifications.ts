@@ -2,11 +2,13 @@
 
 import {
   sendEmail,
+  sendSMS,
   getBookingConfirmationEmail,
   getBookingCancelledEmail,
   getAdminBookingNotificationEmail,
   getBookingApprovedEmail,
   getBookingRescheduledEmail,
+  getAdminCancellationNotificationEmail,
 } from "@/lib/email"
 import { db } from "@/lib/db"
 
@@ -117,5 +119,45 @@ export async function sendBookingRescheduledEmail(bookingId: string) {
     })
   } catch (error) {
     console.error("Failed to send booking rescheduled email:", error)
+  }
+}
+
+export async function sendAdminCancellationNotificationEmail(bookingId: string) {
+  try {
+    const booking = await db.booking.findUnique({
+      where: { id: bookingId },
+      include: { customer: true, service: true },
+    })
+
+    if (!booking) return
+
+    const admin = await db.admin.findFirst()
+    if (!admin?.userId) return
+
+    const adminUser = await db.user.findUnique({ where: { id: admin.userId } })
+    if (!adminUser) return
+
+    const cancellationEmail = getAdminCancellationNotificationEmail(
+      `${booking.customer.firstName} ${booking.customer.lastName}`,
+      booking.customer.email,
+      booking.service.name,
+      booking.startTime,
+      booking.service.price,
+      (booking as any).cancellationReason || "Not specified"
+    )
+
+    await sendEmail({
+      to: adminUser.email,
+      subject: `Booking Cancelled - ${booking.service.name}`,
+      html: cancellationEmail,
+    })
+
+    // Send SMS notification if phone number is available
+    if (adminUser.phone) {
+      const smsMessage = `Booking cancelled: ${booking.service.name} for ${booking.customer.firstName} ${booking.customer.lastName} on ${booking.startTime.toLocaleString()}`
+      await sendSMS(adminUser.phone, smsMessage)
+    }
+  } catch (error) {
+    console.error("Failed to send admin cancellation notification email:", error)
   }
 }

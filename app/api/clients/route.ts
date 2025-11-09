@@ -18,7 +18,7 @@ export async function GET() {
         email: true,
         phone: true,
         bookings: {
-          where: { paymentStatus: "PAID" },
+          where: { paymentStatus: "PAID", status: { not: "CANCELLED" } },
           include: { service: true },
         },
       },

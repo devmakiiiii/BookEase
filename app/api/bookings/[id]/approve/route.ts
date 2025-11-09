@@ -1,6 +1,6 @@
 import { getCurrentUser } from "@/app/actions/auth"
 import { db } from "@/lib/db"
-import { sendBookingApprovedEmail } from "@/app/actions/notifications"
+import { sendBookingConfirmationEmail } from "@/app/actions/notifications"
 import { type NextRequest, NextResponse } from "next/server"
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -19,9 +19,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     })
     console.log("Booking status updated successfully")
 
-    // Send approval email
-    await sendBookingApprovedEmail(id)
-    console.log("Approval email sent")
+    // Send confirmation email to customer
+    await sendBookingConfirmationEmail(id)
+    console.log("Confirmation email sent")
 
     return NextResponse.json({ success: true })
   } catch (error) {

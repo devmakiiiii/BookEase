@@ -6,11 +6,21 @@ import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { Calendar, User, Clock, MapPin, CheckCircle, Edit } from "lucide-react"
 import RescheduleModal from "@/components/reschedule-modal"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface Booking {
   id: string
   customer: { firstName: string; lastName: string; email: string }
-  service: { name: string; duration: number; price: number }
+  service: { name: string; duration: number; price: number; cancellationHoursBefore?: number; cancellationFeePercentage?: number }
   startTime: string
   status: string
   paymentStatus: string
@@ -21,6 +31,7 @@ export default function BookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
   const [rescheduleModal, setRescheduleModal] = useState<{ bookingId: string; startTime: string; serviceName: string } | null>(null)
+  const [cancelDialog, setCancelDialog] = useState<{ bookingId: string; message: string } | null>(null)
 
   useEffect(() => {
     const fetchBookings = async () => {
@@ -39,14 +50,69 @@ export default function BookingsPage() {
     fetchBookings()
   }, [toast])
 
-  const handleCancelBooking = async (bookingId: string) => {
+  const handleCancelBooking = (bookingId: string) => {
+    const booking = bookings.find(b => b.id === bookingId)
+    if (!booking) return
+
+    // Calculate time until appointment
+    const now = new Date()
+    const appointmentTime = new Date(booking.startTime)
+    const hoursUntilAppointment = (appointmentTime.getTime() - now.getTime()) / (1000 * 60 * 60)
+
+    // Show policy information in confirmation
+    let confirmMessage = "Are you sure you want to cancel this booking?\n\n"
+    confirmMessage += `Appointment: ${appointmentTime.toLocaleString()}\n`
+
+    if (booking.service.cancellationHoursBefore) {
+      const policyHours = booking.service.cancellationHoursBefore
+      const feePercentage = booking.service.cancellationFeePercentage || 0
+
+      if (hoursUntilAppointment < policyHours) {
+        confirmMessage += `⚠️ Late cancellation: ${(policyHours - hoursUntilAppointment).toFixed(1)} hours past the ${policyHours}-hour notice requirement.\n`
+        if (feePercentage > 0) {
+          confirmMessage += `💰 Cancellation fee: ${feePercentage}% of service price will apply.\n`
+        }
+      } else {
+        confirmMessage += `✅ Within policy: ${hoursUntilAppointment.toFixed(1)} hours remaining (policy requires ${policyHours} hours).\n`
+      }
+    }
+
+    if (booking.paymentStatus === "PAID") {
+      confirmMessage += "💳 Refund will be processed automatically.\n"
+    }
+
+    confirmMessage += "\nThis action cannot be undone."
+
+    setCancelDialog({ bookingId, message: confirmMessage })
+  }
+
+  const confirmCancelBooking = async () => {
+    if (!cancelDialog) return
+    const { bookingId } = cancelDialog
+    setCancelDialog(null)
+
     try {
       const response = await fetch(`/api/bookings/${bookingId}/cancel`, { method: "POST" })
-      if (!response.ok) throw new Error("Failed to cancel booking")
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to cancel booking")
+      }
+
+      const result = await response.json()
       setBookings(bookings.filter((b) => b.id !== bookingId))
-      toast({ title: "Success", description: "Booking cancelled" })
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to cancel booking", variant: "destructive" })
+
+      let message = "Booking cancelled successfully"
+      if (result.refundProcessed) {
+        message += ` - Refund of $${result.refundAmount} processed`
+      }
+
+      toast({ title: "Success", description: message })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to cancel booking",
+        variant: "destructive"
+      })
     }
   }
 
@@ -133,16 +199,31 @@ export default function BookingsPage() {
 
                 <div className="flex gap-2 text-sm">
                   <span
-                    className={`px-2 py-1 rounded-full text-xs font-medium ${booking.status === "CONFIRMED" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}`}
+                    className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      booking.status === "CONFIRMED" ? "bg-green-100 text-green-800" :
+                      booking.status === "CANCELLED" ? "bg-red-100 text-red-800" :
+                      "bg-yellow-100 text-yellow-800"
+                    }`}
                   >
                     {booking.status}
                   </span>
                   <span
-                    className={`px-2 py-1 rounded-full text-xs font-medium ${booking.paymentStatus === "PAID" ? "bg-blue-100 text-blue-800" : "bg-gray-100 text-gray-800"}`}
+                    className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      booking.paymentStatus === "PAID" ? "bg-blue-100 text-blue-800" :
+                      booking.paymentStatus === "REFUNDED" ? "bg-orange-100 text-orange-800" :
+                      "bg-gray-100 text-gray-800"
+                    }`}
                   >
                     {booking.paymentStatus}
                   </span>
                 </div>
+
+                {booking.service.cancellationHoursBefore && (
+                  <div className="text-xs text-muted-foreground mt-2">
+                    Cancellation policy: {booking.service.cancellationHoursBefore} hours notice required
+                    {booking.service.cancellationFeePercentage && booking.service.cancellationFeePercentage > 0 && ` (${booking.service.cancellationFeePercentage}% fee for late cancellations)`}
+                  </div>
+                )}
 
                 <div className="flex gap-2 mt-4">
                   {booking.status === "PENDING" && (
@@ -201,6 +282,27 @@ export default function BookingsPage() {
           onClose={() => setRescheduleModal(null)}
           onSuccess={handleRescheduleSuccess}
         />
+      )}
+
+      {cancelDialog && (
+        <AlertDialog open={true} onOpenChange={() => setCancelDialog(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Cancel Booking</AlertDialogTitle>
+              <AlertDialogDescription>
+                {cancelDialog.message.split('\n').map((line, i) => (
+                  <span key={i} style={{ display: 'block' }}>{line}</span>
+                ))}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Keep Booking</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmCancelBooking} className="bg-red-600 text-white hover:bg-red-700">
+                Cancel Booking
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
     </div>
   )

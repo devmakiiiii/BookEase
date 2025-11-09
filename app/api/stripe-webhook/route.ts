@@ -42,13 +42,12 @@ export async function POST(request: NextRequest) {
             where: { id: booking.id },
             data: {
               paymentStatus: "PAID",
-              status: "CONFIRMED",
+              // Keep status as PENDING for manual admin approval
             },
           })
-          console.log("Updated booking", booking.id, "to PAID and CONFIRMED")
+          console.log("Updated booking", booking.id, "to PAID (status remains PENDING for admin approval)")
 
-          // Send confirmation emails
-          await sendBookingConfirmationEmail(booking.id)
+          // Remove automatic confirmation email - will be sent after admin approval
         } else {
           console.log("Payment not completed for booking", booking.id)
         }
