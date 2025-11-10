@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast"
 interface DashboardStats {
   totalBookings: number
   confirmedBookings: number
+  pendingBookings: number
   totalRevenue: number
   totalClients: number
 }
@@ -45,7 +46,7 @@ export default function DashboardPage() {
       <div className="grid md:grid-cols-4 gap-4 mb-8">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Bookings</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Bookings Today</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats?.totalBookings || 0}</div>
@@ -54,19 +55,10 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Confirmed</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Pending Bookings</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{stats?.confirmedBookings || 0}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">${((stats?.totalRevenue || 0) / 100).toFixed(2)}</div>
+            <div className="text-2xl font-bold text-green-600">{stats?.pendingBookings || 0}</div>
           </CardContent>
         </Card>
 
@@ -76,6 +68,15 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats?.totalClients || 0}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">${((stats?.totalRevenue || 0) / 100).toFixed(2)}</div>
           </CardContent>
         </Card>
       </div>

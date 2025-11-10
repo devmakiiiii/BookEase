@@ -9,8 +9,22 @@ export async function GET() {
   }
 
   try {
-    const totalBookings = await db.booking.count()
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const tomorrow = new Date(today)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+
+    const totalBookings = await db.booking.count({
+      where: {
+        startTime: {
+          gte: today,
+          lt: tomorrow
+        },
+        status: "CONFIRMED"
+      }
+    })
     const confirmedBookings = await db.booking.count({ where: { status: "CONFIRMED" } })
+    const pendingBookings = await db.booking.count({ where: { status: "PENDING" } })
     const cancelledBookings = await db.booking.count({ where: { status: "CANCELLED" } })
 
     const paidBookings = await db.booking.findMany({
@@ -25,7 +39,14 @@ export async function GET() {
     })
     const totalRefunds = refundedBookings.reduce((sum, b) => sum + ((b as any).refundAmount || 0), 0)
 
-    const totalClients = await db.user.count({ where: { role: "CUSTOMER" } })
+    const activeClients = await db.booking.findMany({
+      where: {
+        status: { in: ['PENDING', 'CONFIRMED'] }
+      },
+      select: { customerId: true },
+      distinct: ['customerId']
+    })
+    const totalClients = activeClients.length
 
     // Cancellation analytics
     const cancellationRate = totalBookings > 0 ? (cancelledBookings / totalBookings) * 100 : 0
@@ -44,6 +65,7 @@ export async function GET() {
     return NextResponse.json({
       totalBookings,
       confirmedBookings,
+      pendingBookings,
       cancelledBookings,
       totalRevenue,
       totalRefunds,

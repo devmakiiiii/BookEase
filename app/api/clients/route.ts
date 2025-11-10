@@ -18,7 +18,7 @@ export async function GET() {
         email: true,
         phone: true,
         bookings: {
-          where: { paymentStatus: "PAID", status: { not: "CANCELLED" } },
+          where: { paymentStatus: "PAID", status: "CONFIRMED" },
           include: { service: true },
         },
       },
@@ -31,7 +31,7 @@ export async function GET() {
       phone: client.phone,
       bookingCount: client.bookings.length,
       totalSpent: client.bookings.reduce((sum, b) => sum + b.service.price, 0),
-    }))
+    })).filter(client => client.bookingCount > 0)
 
     return NextResponse.json(clientsWithStats)
   } catch (error) {

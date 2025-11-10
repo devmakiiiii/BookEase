@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
 import { Calendar, User, Clock, MapPin, CheckCircle, Edit } from "lucide-react"
 import RescheduleModal from "@/components/reschedule-modal"
@@ -32,6 +33,8 @@ export default function BookingsPage() {
   const [loading, setLoading] = useState(true)
   const [rescheduleModal, setRescheduleModal] = useState<{ bookingId: string; startTime: string; serviceName: string } | null>(null)
   const [cancelDialog, setCancelDialog] = useState<{ bookingId: string; message: string } | null>(null)
+  const [activeTab, setActiveTab] = useState("all")
+  const [updatingStatuses, setUpdatingStatuses] = useState(false)
 
   useEffect(() => {
     const fetchBookings = async () => {
@@ -49,6 +52,9 @@ export default function BookingsPage() {
 
     fetchBookings()
   }, [toast])
+  const pendingBookings = bookings.filter(b => b.status === "PENDING")
+  const confirmedBookings = bookings.filter(b => b.status === "CONFIRMED")
+  const cancelledBookings = bookings.filter(b => b.status === "CANCELLED")
 
   const handleCancelBooking = (bookingId: string) => {
     const booking = bookings.find(b => b.id === bookingId)
@@ -151,13 +157,45 @@ export default function BookingsPage() {
     }
   }
 
+  const handleUpdateBookingStatuses = async () => {
+    setUpdatingStatuses(true)
+    try {
+      const response = await fetch("/api/bookings/update-status", { method: "POST" })
+      if (!response.ok) throw new Error("Failed to update booking statuses")
+      const result = await response.json()
+      toast({ title: "Success", description: `Updated ${result.updatedCount} bookings to completed` })
+      // Refresh bookings list
+      const bookingsResponse = await fetch("/api/bookings")
+      if (bookingsResponse.ok) {
+        const updatedBookings = await bookingsResponse.json()
+        setBookings(updatedBookings)
+      }
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to update booking statuses", variant: "destructive" })
+    } finally {
+      setUpdatingStatuses(false)
+    }
+  }
+
   if (loading) return <div className="text-center py-12">Loading...</div>
 
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Bookings</h1>
-        <p className="text-muted-foreground">Manage and track all bookings</p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Bookings</h1>
+            <p className="text-muted-foreground">Manage and track all bookings</p>
+          </div>
+          <Button
+            onClick={handleUpdateBookingStatuses}
+            disabled={updatingStatuses}
+            variant="outline"
+            className="flex items-center gap-2"
+          >
+            {updatingStatuses ? "Updating..." : "Update Statuses"}
+          </Button>
+        </div>
       </div>
 
       {bookings.length === 0 ? (
@@ -167,111 +205,658 @@ export default function BookingsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-4">
-          {bookings.map((booking) => (
-            <Card key={booking.id} className="hover:shadow-lg transition-shadow">
-              <CardContent className="pt-6">
-                <div className="grid md:grid-cols-2 gap-4 mb-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm">
-                      <User className="w-4 h-4 text-muted-foreground" />
-                      <span className="font-medium">{booking.customer.firstName} {booking.customer.lastName}</span>
-                      <span className="text-muted-foreground">{booking.customer.email}</span>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="all">All ({bookings.length})</TabsTrigger>
+            <TabsTrigger value="pending">Pending ({pendingBookings.length})</TabsTrigger>
+            <TabsTrigger value="confirmed">Confirmed ({confirmedBookings.length})</TabsTrigger>
+            <TabsTrigger value="cancelled">Cancelled ({cancelledBookings.length})</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="all" className="space-y-8">
+            {/* Pending Bookings */}
+            {pendingBookings.length > 0 && (
+              <div>
+                <h2 className="text-xl font-semibold mb-4">Pending Bookings</h2>
+                <div className="space-y-4">
+                  {pendingBookings.map((booking) => (
+                    <Card key={booking.id} className="hover:shadow-lg transition-shadow">
+                      <CardContent className="pt-6">
+                        <div className="grid md:grid-cols-2 gap-4 mb-4">
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-sm">
+                              <User className="w-4 h-4 text-muted-foreground" />
+                              <span className="font-medium">{booking.customer.firstName} {booking.customer.lastName}</span>
+                              <span className="text-muted-foreground">{booking.customer.email}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                              <MapPin className="w-4 h-4 text-muted-foreground" />
+                              <span className="font-medium">{booking.service.name}</span>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-sm">
+                              <Calendar className="w-4 h-4 text-muted-foreground" />
+                              <span>{new Date(booking.startTime).toLocaleString()}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                              <Clock className="w-4 h-4 text-muted-foreground" />
+                              <span>
+                                {booking.service.duration} min • ${(booking.service.price / 100).toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2 text-sm">
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              booking.status === "CONFIRMED" ? "bg-green-100 text-green-800" :
+                              booking.status === "CANCELLED" ? "bg-red-100 text-red-800" :
+                              "bg-yellow-100 text-yellow-800"
+                            }`}
+                          >
+                            {booking.status}
+                          </span>
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              booking.paymentStatus === "PAID" ? "bg-blue-100 text-blue-800" :
+                              booking.paymentStatus === "REFUNDED" ? "bg-orange-100 text-orange-800" :
+                              "bg-gray-100 text-gray-800"
+                            }`}
+                          >
+                            {booking.paymentStatus}
+                          </span>
+                        </div>
+
+
+                        <div className="flex gap-2 mt-4">
+                          {booking.status === "PENDING" && (
+                            <Button
+                              variant="default"
+                              size="sm"
+                              onClick={() => handleApproveBooking(booking.id)}
+                              className="flex items-center gap-1"
+                            >
+                              <CheckCircle className="w-4 h-4" />
+                              Approve
+                            </Button>
+                          )}
+                          {booking.paymentStatus === "UNPAID" && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => handleMarkAsPaid(booking.id)}
+                              className="flex items-center gap-1"
+                            >
+                              💳 Mark as Paid
+                            </Button>
+                          )}
+                          {booking.status !== "CANCELLED" && (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleRescheduleBooking(booking.id, booking.startTime, booking.service.name)}
+                                className="flex items-center gap-1"
+                              >
+                                <Edit className="w-4 h-4" />
+                                Reschedule
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleCancelBooking(booking.id)}
+                              >
+                                Cancel
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Confirmed Bookings */}
+            {confirmedBookings.length > 0 && (
+              <div>
+                <h2 className="text-xl font-semibold mb-4">Confirmed Bookings</h2>
+                <div className="space-y-4">
+                  {confirmedBookings.map((booking) => (
+                    <Card key={booking.id} className="hover:shadow-lg transition-shadow">
+                      <CardContent className="pt-6">
+                        <div className="grid md:grid-cols-2 gap-4 mb-4">
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-sm">
+                              <User className="w-4 h-4 text-muted-foreground" />
+                              <span className="font-medium">{booking.customer.firstName} {booking.customer.lastName}</span>
+                              <span className="text-muted-foreground">{booking.customer.email}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                              <MapPin className="w-4 h-4 text-muted-foreground" />
+                              <span className="font-medium">{booking.service.name}</span>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-sm">
+                              <Calendar className="w-4 h-4 text-muted-foreground" />
+                              <span>{new Date(booking.startTime).toLocaleString()}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                              <Clock className="w-4 h-4 text-muted-foreground" />
+                              <span>
+                                {booking.service.duration} min • ${(booking.service.price / 100).toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2 text-sm">
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              booking.status === "CONFIRMED" ? "bg-green-100 text-green-800" :
+                              booking.status === "CANCELLED" ? "bg-red-100 text-red-800" :
+                              "bg-yellow-100 text-yellow-800"
+                            }`}
+                          >
+                            {booking.status}
+                          </span>
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              booking.paymentStatus === "PAID" ? "bg-blue-100 text-blue-800" :
+                              booking.paymentStatus === "REFUNDED" ? "bg-orange-100 text-orange-800" :
+                              "bg-gray-100 text-gray-800"
+                            }`}
+                          >
+                            {booking.paymentStatus}
+                          </span>
+                        </div>
+
+
+                        <div className="flex gap-2 mt-4">
+                          {booking.status === "PENDING" && (
+                            <Button
+                              variant="default"
+                              size="sm"
+                              onClick={() => handleApproveBooking(booking.id)}
+                              className="flex items-center gap-1"
+                            >
+                              <CheckCircle className="w-4 h-4" />
+                              Approve
+                            </Button>
+                          )}
+                          {booking.paymentStatus === "UNPAID" && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => handleMarkAsPaid(booking.id)}
+                              className="flex items-center gap-1"
+                            >
+                              💳 Mark as Paid
+                            </Button>
+                          )}
+                          {booking.status !== "CANCELLED" && (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleRescheduleBooking(booking.id, booking.startTime, booking.service.name)}
+                                className="flex items-center gap-1"
+                              >
+                                <Edit className="w-4 h-4" />
+                                Reschedule
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleCancelBooking(booking.id)}
+                              >
+                                Cancel
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Cancelled Bookings */}
+            {cancelledBookings.length > 0 && (
+              <div>
+                <h2 className="text-xl font-semibold mb-4">Cancelled Bookings</h2>
+                <div className="space-y-4">
+                  {cancelledBookings.map((booking) => (
+                    <Card key={booking.id} className="hover:shadow-lg transition-shadow">
+                      <CardContent className="pt-6">
+                        <div className="grid md:grid-cols-2 gap-4 mb-4">
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-sm">
+                              <User className="w-4 h-4 text-muted-foreground" />
+                              <span className="font-medium">{booking.customer.firstName} {booking.customer.lastName}</span>
+                              <span className="text-muted-foreground">{booking.customer.email}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                              <MapPin className="w-4 h-4 text-muted-foreground" />
+                              <span className="font-medium">{booking.service.name}</span>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-sm">
+                              <Calendar className="w-4 h-4 text-muted-foreground" />
+                              <span>{new Date(booking.startTime).toLocaleString()}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                              <Clock className="w-4 h-4 text-muted-foreground" />
+                              <span>
+                                {booking.service.duration} min • ${(booking.service.price / 100).toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2 text-sm">
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              booking.status === "CONFIRMED" ? "bg-green-100 text-green-800" :
+                              booking.status === "CANCELLED" ? "bg-red-100 text-red-800" :
+                              "bg-yellow-100 text-yellow-800"
+                            }`}
+                          >
+                            {booking.status}
+                          </span>
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              booking.paymentStatus === "PAID" ? "bg-blue-100 text-blue-800" :
+                              booking.paymentStatus === "REFUNDED" ? "bg-orange-100 text-orange-800" :
+                              "bg-gray-100 text-gray-800"
+                            }`}
+                          >
+                            {booking.paymentStatus}
+                          </span>
+                        </div>
+
+
+                        <div className="flex gap-2 mt-4">
+                          {booking.status === "PENDING" && (
+                            <Button
+                              variant="default"
+                              size="sm"
+                              onClick={() => handleApproveBooking(booking.id)}
+                              className="flex items-center gap-1"
+                            >
+                              <CheckCircle className="w-4 h-4" />
+                              Approve
+                            </Button>
+                          )}
+                          {booking.paymentStatus === "UNPAID" && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => handleMarkAsPaid(booking.id)}
+                              className="flex items-center gap-1"
+                            >
+                              💳 Mark as Paid
+                            </Button>
+                          )}
+                          {booking.status !== "CANCELLED" && (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleRescheduleBooking(booking.id, booking.startTime, booking.service.name)}
+                                className="flex items-center gap-1"
+                              >
+                                <Edit className="w-4 h-4" />
+                                Reschedule
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handleCancelBooking(booking.id)}
+                              >
+                                Cancel
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="pending" className="space-y-4">
+            {pendingBookings.length > 0 ? (
+              pendingBookings.map((booking) => (
+                <Card key={booking.id} className="hover:shadow-lg transition-shadow">
+                  <CardContent className="pt-6">
+                    <div className="grid md:grid-cols-2 gap-4 mb-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-sm">
+                          <User className="w-4 h-4 text-muted-foreground" />
+                          <span className="font-medium">{booking.customer.firstName} {booking.customer.lastName}</span>
+                          <span className="text-muted-foreground">{booking.customer.email}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          <MapPin className="w-4 h-4 text-muted-foreground" />
+                          <span className="font-medium">{booking.service.name}</span>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-sm">
+                          <Calendar className="w-4 h-4 text-muted-foreground" />
+                          <span>{new Date(booking.startTime).toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          <Clock className="w-4 h-4 text-muted-foreground" />
+                          <span>
+                            {booking.service.duration} min • ${(booking.service.price / 100).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <MapPin className="w-4 h-4 text-muted-foreground" />
-                      <span className="font-medium">{booking.service.name}</span>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Calendar className="w-4 h-4 text-muted-foreground" />
-                      <span>{new Date(booking.startTime).toLocaleString()}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <Clock className="w-4 h-4 text-muted-foreground" />
-                      <span>
-                        {booking.service.duration} min • ${(booking.service.price / 100).toFixed(2)}
+
+                    <div className="flex gap-2 text-sm">
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          booking.status === "CONFIRMED" ? "bg-green-100 text-green-800" :
+                          booking.status === "CANCELLED" ? "bg-red-100 text-red-800" :
+                          "bg-yellow-100 text-yellow-800"
+                        }`}
+                      >
+                        {booking.status}
+                      </span>
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          booking.paymentStatus === "PAID" ? "bg-blue-100 text-blue-800" :
+                          booking.paymentStatus === "REFUNDED" ? "bg-orange-100 text-orange-800" :
+                          "bg-gray-100 text-gray-800"
+                        }`}
+                      >
+                        {booking.paymentStatus}
                       </span>
                     </div>
-                  </div>
-                </div>
 
-                <div className="flex gap-2 text-sm">
-                  <span
-                    className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      booking.status === "CONFIRMED" ? "bg-green-100 text-green-800" :
-                      booking.status === "CANCELLED" ? "bg-red-100 text-red-800" :
-                      "bg-yellow-100 text-yellow-800"
-                    }`}
-                  >
-                    {booking.status}
-                  </span>
-                  <span
-                    className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      booking.paymentStatus === "PAID" ? "bg-blue-100 text-blue-800" :
-                      booking.paymentStatus === "REFUNDED" ? "bg-orange-100 text-orange-800" :
-                      "bg-gray-100 text-gray-800"
-                    }`}
-                  >
-                    {booking.paymentStatus}
-                  </span>
-                </div>
 
-                {booking.service.cancellationHoursBefore && (
-                  <div className="text-xs text-muted-foreground mt-2">
-                    Cancellation policy: {booking.service.cancellationHoursBefore} hours notice required
-                    {booking.service.cancellationFeePercentage && booking.service.cancellationFeePercentage > 0 && ` (${booking.service.cancellationFeePercentage}% fee for late cancellations)`}
-                  </div>
-                )}
+                    <div className="flex gap-2 mt-4">
+                      {booking.status === "PENDING" && (
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={() => handleApproveBooking(booking.id)}
+                          className="flex items-center gap-1"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                          Approve
+                        </Button>
+                      )}
+                      {booking.paymentStatus === "UNPAID" && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleMarkAsPaid(booking.id)}
+                          className="flex items-center gap-1"
+                        >
+                          💳 Mark as Paid
+                        </Button>
+                      )}
+                      {booking.status !== "CANCELLED" && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRescheduleBooking(booking.id, booking.startTime, booking.service.name)}
+                            className="flex items-center gap-1"
+                          >
+                            <Edit className="w-4 h-4" />
+                            Reschedule
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleCancelBooking(booking.id)}
+                          >
+                            Cancel
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            ) : (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <p className="text-muted-foreground">No pending bookings</p>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
 
-                <div className="flex gap-2 mt-4">
-                  {booking.status === "PENDING" && (
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={() => handleApproveBooking(booking.id)}
-                      className="flex items-center gap-1"
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                      Approve
-                    </Button>
-                  )}
-                  {booking.paymentStatus === "UNPAID" && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => handleMarkAsPaid(booking.id)}
-                      className="flex items-center gap-1"
-                    >
-                      💳 Mark as Paid
-                    </Button>
-                  )}
-                  {booking.status !== "CANCELLED" && (
-                    <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleRescheduleBooking(booking.id, booking.startTime, booking.service.name)}
-                        className="flex items-center gap-1"
+          <TabsContent value="confirmed" className="space-y-4">
+            {confirmedBookings.length > 0 ? (
+              confirmedBookings.map((booking) => (
+                <Card key={booking.id} className="hover:shadow-lg transition-shadow">
+                  <CardContent className="pt-6">
+                    <div className="grid md:grid-cols-2 gap-4 mb-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-sm">
+                          <User className="w-4 h-4 text-muted-foreground" />
+                          <span className="font-medium">{booking.customer.firstName} {booking.customer.lastName}</span>
+                          <span className="text-muted-foreground">{booking.customer.email}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          <MapPin className="w-4 h-4 text-muted-foreground" />
+                          <span className="font-medium">{booking.service.name}</span>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-sm">
+                          <Calendar className="w-4 h-4 text-muted-foreground" />
+                          <span>{new Date(booking.startTime).toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          <Clock className="w-4 h-4 text-muted-foreground" />
+                          <span>
+                            {booking.service.duration} min • ${(booking.service.price / 100).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 text-sm">
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          booking.status === "CONFIRMED" ? "bg-green-100 text-green-800" :
+                          booking.status === "CANCELLED" ? "bg-red-100 text-red-800" :
+                          "bg-yellow-100 text-yellow-800"
+                        }`}
                       >
-                        <Edit className="w-4 h-4" />
-                        Reschedule
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleCancelBooking(booking.id)}
+                        {booking.status}
+                      </span>
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          booking.paymentStatus === "PAID" ? "bg-blue-100 text-blue-800" :
+                          booking.paymentStatus === "REFUNDED" ? "bg-orange-100 text-orange-800" :
+                          "bg-gray-100 text-gray-800"
+                        }`}
                       >
-                        Cancel
-                      </Button>
-                    </>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                        {booking.paymentStatus}
+                      </span>
+                    </div>
+
+
+                    <div className="flex gap-2 mt-4">
+                      {booking.status === "PENDING" && (
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={() => handleApproveBooking(booking.id)}
+                          className="flex items-center gap-1"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                          Approve
+                        </Button>
+                      )}
+                      {booking.paymentStatus === "UNPAID" && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleMarkAsPaid(booking.id)}
+                          className="flex items-center gap-1"
+                        >
+                          💳 Mark as Paid
+                        </Button>
+                      )}
+                      {booking.status !== "CANCELLED" && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRescheduleBooking(booking.id, booking.startTime, booking.service.name)}
+                            className="flex items-center gap-1"
+                          >
+                            <Edit className="w-4 h-4" />
+                            Reschedule
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleCancelBooking(booking.id)}
+                          >
+                            Cancel
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            ) : (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <p className="text-muted-foreground">No confirmed bookings</p>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          <TabsContent value="cancelled" className="space-y-4">
+            {cancelledBookings.length > 0 ? (
+              cancelledBookings.map((booking) => (
+                <Card key={booking.id} className="hover:shadow-lg transition-shadow">
+                  <CardContent className="pt-6">
+                    <div className="grid md:grid-cols-2 gap-4 mb-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-sm">
+                          <User className="w-4 h-4 text-muted-foreground" />
+                          <span className="font-medium">{booking.customer.firstName} {booking.customer.lastName}</span>
+                          <span className="text-muted-foreground">{booking.customer.email}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          <MapPin className="w-4 h-4 text-muted-foreground" />
+                          <span className="font-medium">{booking.service.name}</span>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-sm">
+                          <Calendar className="w-4 h-4 text-muted-foreground" />
+                          <span>{new Date(booking.startTime).toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          <Clock className="w-4 h-4 text-muted-foreground" />
+                          <span>
+                            {booking.service.duration} min • ${(booking.service.price / 100).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 text-sm">
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          booking.status === "CONFIRMED" ? "bg-green-100 text-green-800" :
+                          booking.status === "CANCELLED" ? "bg-red-100 text-red-800" :
+                          "bg-yellow-100 text-yellow-800"
+                        }`}
+                      >
+                        {booking.status}
+                      </span>
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          booking.paymentStatus === "PAID" ? "bg-blue-100 text-blue-800" :
+                          booking.paymentStatus === "REFUNDED" ? "bg-orange-100 text-orange-800" :
+                          "bg-gray-100 text-gray-800"
+                        }`}
+                      >
+                        {booking.paymentStatus}
+                      </span>
+                    </div>
+
+
+                    <div className="flex gap-2 mt-4">
+                      {booking.status === "PENDING" && (
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={() => handleApproveBooking(booking.id)}
+                          className="flex items-center gap-1"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                          Approve
+                        </Button>
+                      )}
+                      {booking.paymentStatus === "UNPAID" && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleMarkAsPaid(booking.id)}
+                          className="flex items-center gap-1"
+                        >
+                          💳 Mark as Paid
+                        </Button>
+                      )}
+                      {booking.status !== "CANCELLED" && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRescheduleBooking(booking.id, booking.startTime, booking.service.name)}
+                            className="flex items-center gap-1"
+                          >
+                            <Edit className="w-4 h-4" />
+                            Reschedule
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleCancelBooking(booking.id)}
+                          >
+                            Cancel
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            ) : (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <p className="text-muted-foreground">No cancelled bookings</p>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+        </Tabs>
       )}
 
       {rescheduleModal && (

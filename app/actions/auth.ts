@@ -7,7 +7,7 @@ import { hashPassword, verifyPassword } from "@/lib/auth"
 
 const SESSION_COOKIE_NAME = "bookease-session"
 
-export async function signup(email: string, password: string, firstName: string, lastName: string) {
+export async function signup(email: string, password: string, firstName: string, lastName: string, phone?: string) {
   try {
     const existingUser = await db.user.findUnique({ where: { email } })
     if (existingUser) {
@@ -21,6 +21,7 @@ export async function signup(email: string, password: string, firstName: string,
         password: hashedPassword,
         firstName,
         lastName,
+        phone,
         role: "CUSTOMER",
       },
     })
