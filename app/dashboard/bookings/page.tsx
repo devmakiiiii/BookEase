@@ -876,7 +876,7 @@ export default function BookingsPage() {
               <AlertDialogTitle>Cancel Booking</AlertDialogTitle>
               <AlertDialogDescription>
                 {cancelDialog.message.split('\n').map((line, i) => (
-                  <span key={i} style={{ display: 'block' }}>{line}</span>
+                  <span key={`line-${i}`} style={{ display: 'block' }}>{line}</span>
                 ))}
               </AlertDialogDescription>
             </AlertDialogHeader>

@@ -94,8 +94,8 @@ export default function AnalyticsPage() {
                   fill="#8884d8"
                   dataKey="count"
                 >
-                  {(data?.bookingsByStatus || []).map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  {(data?.bookingsByStatus || []).map((item, index) => (
+                    <Cell key={`cell-${item.status}-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip />
